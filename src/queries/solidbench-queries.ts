@@ -41,5 +41,14 @@ SELECT DISTINCT ?creator ?messageContent WHERE {
   ?otherMessage snvoc:hasCreator ?creator;
     snvoc:content ?messageContent.
 }
-LIMIT 10`
+LIMIT 10`,
+d_7_5: `
+PREFIX snvoc: <https://solidbench.linkeddatafragments.org/www.ldbc.eu/ldbc_socialnet/1.0/vocabulary/>
+SELECT DISTINCT ?firstName ?lastName WHERE {
+  ?message snvoc:hasCreator <https://solidbench.linkeddatafragments.org/pods/00000006597069767117/profile/card#me>.
+  ?forum snvoc:containerOf ?message;
+    snvoc:hasModerator ?moderator.
+  ?moderator snvoc:firstName ?firstName;
+    snvoc:lastName ?lastName.
+}`
 };
