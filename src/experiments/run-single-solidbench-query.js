@@ -3,9 +3,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const comunica_runner_1 = require("../packages/comunica-runner");
 const solidbench_queries_1 = require("../queries/solidbench-queries");
 const statistic_link_discovery_1 = require("@comunica/statistic-link-discovery");
-// runSingleQuery(runner, queries.d_1_1, 100);
-runSingleQuery(solidbench_queries_1.queries.d_8_5, 8);
-// runSingleQueryStreaming(runner, bottleNeckQueries.traversal, 1);
+const statistic_link_dereference_1 = require("@comunica/statistic-link-dereference");
+runSingleQuery(solidbench_queries_1.queries.local_d_6_0, 1);
 async function runSingleQuery(query, repeats, runner) {
     const totalTimeTaken = [];
     const firstTs = [];
@@ -13,9 +12,12 @@ async function runSingleQuery(query, repeats, runner) {
     const nResults = [];
     for (let i = 0; i < repeats; i++) {
         const runner = new comunica_runner_1.ComunicaRunner();
-        console.log(process.memoryUsage());
         console.log(`${i + 1}/${repeats}`);
-        // let links = 0;
+        let links = 0;
+        const statistic = new statistic_link_dereference_1.StatisticLinkDereference();
+        statistic.on((data) => {
+            links++;
+        });
         // let intermediateResults = 0;
         // const statistic = new StatisticLinkDiscovery();
         // const linksEmitted: Set<string> = new Set();
@@ -35,37 +37,25 @@ async function runSingleQuery(query, repeats, runner) {
             "lenient": true,
             noCache: true,
             // log: new LoggerPretty({ level: 'debug' })
-            // [statistic.key.name]: statistic,
+            [statistic.key.name]: statistic,
             // [statisticIntermediateResults.key.name]: statisticIntermediateResults
         });
         const result = await trackTimestamps(bs);
-        console.log(result);
         totalTimeTaken.push(result.endTime);
         firstTs.push(result.timestamps[0]);
         lastTs.push(result.timestamps[result.timestamps.length - 1]);
         nResults.push(result.nResults);
-        // const result = await bs.toArray();
-        // const timeTaken = (performance.now() - start)/1000;
-        // totalTimeTaken.push(timeTaken);
-        console.log(`${(totalTimeTaken[totalTimeTaken.length - 1]).toFixed(4)} seconds, ${nResults[nResults.length - 1]} results`);
-        if (global.gc) {
-            global.gc();
-        }
-        else {
-            console.log('Garbage collection unavailable.  Pass --expose-gc '
-                + 'when launching node to enable forced garbage collection.');
-        }
-        sleep(5000);
-        // console.log(`${result.length} results, ${links} links, and ${intermediateResults} intermediate results
-        // in ${(timeTaken).toFixed(4)} seconds`
-        // );    
+        console.log(`${(totalTimeTaken[totalTimeTaken.length - 1]).toFixed(4)} seconds, ${nResults[nResults.length - 1]} results, ${links} links`);
+        await sleep(500);
     }
     const { mean, std } = getStats(totalTimeTaken);
     const { mean: meanFirst, std: stdFirst } = getStats(firstTs);
     const { mean: meanLast, std: stdLast } = getStats(lastTs);
+    const { mean: meanResult, std: stdResults } = getStats(nResults);
     console.log(`Execution time: ${mean}(${std})`);
     console.log(`First ts: ${meanFirst}(${stdFirst})`);
     console.log(`Last ts: ${meanLast}(${stdLast})`);
+    console.log(`Results: ${meanResult}(${stdResults})`);
 }
 function trackTimestamps(bs) {
     return new Promise((resolve, reject) => {
@@ -75,7 +65,7 @@ function trackTimestamps(bs) {
         bs.on('data', () => {
             timestamps.push((performance.now() - start) / 1000);
             nResults += 1;
-            console.log("Got data");
+            console.log("Found data");
         });
         bs.on('end', () => {
             const endTime = (performance.now() - start) / 1000;
@@ -122,17 +112,27 @@ function sleep(ms) {
         setTimeout(resolve, ms);
     });
 }
-// "Type-index: 5.01260620078"
-// BFS Execution time: 5.151359135539996(0.40667891642476683)
-// Type-Index Execution Time: 5.1037558031700065(0.5047199817937335)
 `
-Type Index:
-Execution time: 4.784637267709996(0.420810544381306)
-First ts: 0.9192274094399958(0.1947151810088686)
-Last ts: 1.1635524492999962(0.5465982741765153)
-BFS:
-Execution time: 5.0480078823199985(0.5673089988421482)
-First ts: 1.08714607718(0.6613737574271775)
-Last ts: 1.3708740904099992(0.8669249627766322)
+Default:
+Execution time: 4.186129396125001(0.3234682246751786)
+First ts: 0.8993861942500014(0.1947914953027016)
+Last ts: 1.11254683425(0.22251503310573326)
+Results: 6(0)
+Fixed-min-index:
+Execution time: 2.6007704186249994(0.47325979027136944)
+First ts: 0.7889877312499991(0.43696611212360453)
+Last ts: 0.8390577231249994(0.45009665646657526)
+Results: 6(0)
+Lottery:
+Execution time: 2.5118684554999997(0.239776353242635)
+First ts: 0.6692206422500001(0.19015717899060885)
+Last ts: 0.7392682557499998(0.15377096900358228)
+Results: 6(0)
+Lottery signature-based:
+Execution time: 3.4850449025(2.4942489317108425)
+First ts: 0.7051670757500001(0.10495525440143293)
+Last ts: 0.7672689716250004(0.20778836106071646)
+Results: 6(0)
+
 `;
 //# sourceMappingURL=run-single-solidbench-query.js.map

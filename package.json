@@ -5,6 +5,8 @@
   "license": "MIT",
   "dependencies": {
     "@comunica/logger-pretty": "^4.2.0",
+    "@comunica/statistic-link-discovery": "^4.1.0",
+    "@comunica/statistic-link-dereference": "^4.1.0",
     "@rdfjs/types": "1.1.2",
     "typescript": "^5.5.3"
   },
