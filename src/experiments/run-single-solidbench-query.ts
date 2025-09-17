@@ -1,11 +1,9 @@
-import { resourceLimits } from 'worker_threads';
 import { ComunicaRunner } from '../packages/comunica-runner';
 import { queries } from '../queries/solidbench-queries';
 import { StatisticLinkDiscovery } from '@comunica/statistic-link-discovery';
-import { LoggerPretty } from '@comunica/logger-pretty';
 import { StatisticLinkDereference } from '@comunica/statistic-link-dereference';
-
-runSingleQuery(queries.local_d_6_0, 1);
+import { LoggerPretty} from '@comunica/logger-pretty';
+runSingleQuery(queries.local_d_7_0, 3);
 
 async function runSingleQuery(query: string, repeats: number, runner?: ComunicaRunner){
     const totalTimeTaken = [];
@@ -18,7 +16,9 @@ async function runSingleQuery(query: string, repeats: number, runner?: ComunicaR
 
         let links = 0;
         const statistic = new StatisticLinkDereference()
+        const dereferenced = new Set();
         statistic.on((data) => {
+            dereferenced.add(data.url);
             links++;
         });
 
@@ -40,7 +40,7 @@ async function runSingleQuery(query: string, repeats: number, runner?: ComunicaR
         const bs = await runner.executeQuery(query, {
             "lenient": true, 
             noCache: true,
-            // log: new LoggerPretty({ level: 'debug' })
+            // log: new LoggerPretty({ level: 'debug' }),
             [statistic.key.name]: statistic,
             // [statisticIntermediateResults.key.name]: statisticIntermediateResults
         });
@@ -49,7 +49,8 @@ async function runSingleQuery(query: string, repeats: number, runner?: ComunicaR
         firstTs.push(result.timestamps[0]);
         lastTs.push(result.timestamps[result.timestamps.length-1]);
         nResults.push(result.nResults);
-        console.log(`${(totalTimeTaken[totalTimeTaken.length-1]).toFixed(4)} seconds, ${nResults[nResults.length-1]} results, ${links} links`);  
+        console.log(`${(totalTimeTaken[totalTimeTaken.length-1]).toFixed(4)} seconds, ${nResults[nResults.length-1]} results,
+         ${dereferenced.size} links`);  
         await sleep(500);
     }
     const {mean, std} = getStats(totalTimeTaken);

@@ -59,5 +59,15 @@ SELECT DISTINCT ?forumId ?forumTitle WHERE {
     snvoc:id ?forumId;
     snvoc:title ?forumTitle.
 }
+`,
+local_d_7_0: `
+PREFIX snvoc: <http://solidbench-server:3000/www.ldbc.eu/ldbc_socialnet/1.0/vocabulary/>
+SELECT DISTINCT ?firstName ?lastName WHERE {
+  ?message snvoc:hasCreator <http://solidbench-server:3000/pods/00000000000000000933/profile/card#me>.
+  ?forum snvoc:containerOf ?message;
+    snvoc:hasModerator ?moderator.
+  ?moderator snvoc:firstName ?firstName;
+    snvoc:lastName ?lastName.
+}
 `
 };

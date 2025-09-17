@@ -4,7 +4,7 @@ const comunica_runner_1 = require("../packages/comunica-runner");
 const solidbench_queries_1 = require("../queries/solidbench-queries");
 const statistic_link_discovery_1 = require("@comunica/statistic-link-discovery");
 const statistic_link_dereference_1 = require("@comunica/statistic-link-dereference");
-runSingleQuery(solidbench_queries_1.queries.local_d_6_0, 1);
+runSingleQuery(solidbench_queries_1.queries.local_d_7_0, 3);
 async function runSingleQuery(query, repeats, runner) {
     const totalTimeTaken = [];
     const firstTs = [];
@@ -15,7 +15,9 @@ async function runSingleQuery(query, repeats, runner) {
         console.log(`${i + 1}/${repeats}`);
         let links = 0;
         const statistic = new statistic_link_dereference_1.StatisticLinkDereference();
+        const dereferenced = new Set();
         statistic.on((data) => {
+            dereferenced.add(data.url);
             links++;
         });
         // let intermediateResults = 0;
@@ -36,7 +38,7 @@ async function runSingleQuery(query, repeats, runner) {
         const bs = await runner.executeQuery(query, {
             "lenient": true,
             noCache: true,
-            // log: new LoggerPretty({ level: 'debug' })
+            // log: new LoggerPretty({ level: 'debug' }),
             [statistic.key.name]: statistic,
             // [statisticIntermediateResults.key.name]: statisticIntermediateResults
         });
@@ -45,7 +47,8 @@ async function runSingleQuery(query, repeats, runner) {
         firstTs.push(result.timestamps[0]);
         lastTs.push(result.timestamps[result.timestamps.length - 1]);
         nResults.push(result.nResults);
-        console.log(`${(totalTimeTaken[totalTimeTaken.length - 1]).toFixed(4)} seconds, ${nResults[nResults.length - 1]} results, ${links} links`);
+        console.log(`${(totalTimeTaken[totalTimeTaken.length - 1]).toFixed(4)} seconds, ${nResults[nResults.length - 1]} results,
+         ${dereferenced.size} links`);
         await sleep(500);
     }
     const { mean, std } = getStats(totalTimeTaken);
