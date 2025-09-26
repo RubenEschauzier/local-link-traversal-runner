@@ -3,7 +3,7 @@ import { queries } from '../queries/solidbench-queries';
 import { StatisticLinkDiscovery } from '@comunica/statistic-link-discovery';
 import { StatisticLinkDereference } from '@comunica/statistic-link-dereference';
 import { LoggerPretty} from '@comunica/logger-pretty';
-runSingleQuery(queries.local_d_7_0, 3);
+runSingleQuery(queries.local_d_1_0, 1);
 
 async function runSingleQuery(query: string, repeats: number, runner?: ComunicaRunner){
     const totalTimeTaken = [];
@@ -51,6 +51,7 @@ async function runSingleQuery(query: string, repeats: number, runner?: ComunicaR
         nResults.push(result.nResults);
         console.log(`${(totalTimeTaken[totalTimeTaken.length-1]).toFixed(4)} seconds, ${nResults[nResults.length-1]} results,
          ${dereferenced.size} links`);  
+        console.log(dereferenced);
         await sleep(500);
     }
     const {mean, std} = getStats(totalTimeTaken);
