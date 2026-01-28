@@ -2,70 +2,91 @@ import { ComunicaRunner } from '../packages/comunica-runner';
 import { queries } from '../queries/solidbench-queries';
 import { StatisticLinkDiscovery } from '@comunica/statistic-link-discovery';
 import { StatisticLinkDereference } from '@comunica/statistic-link-dereference';
-import { LoggerPretty} from '@comunica/logger-pretty';
-runSingleQuery(queries.local_d_1_0, 1);
 
-async function runSingleQuery(query: string, repeats: number, runner?: ComunicaRunner){
-    const totalTimeTaken = [];
-    const firstTs = [];
-    const lastTs = [];
-    const nResults = [];
-    for (let i = 0; i < repeats; i++){
-        const runner = new ComunicaRunner();
-        console.log(`${i+1}/${repeats}`);
+const runnerOuter = new ComunicaRunner();
+runQueriesRepeat([queries.d_6_1], ["d_8_1"], 3, false);
 
-        let links = 0;
-        const statistic = new StatisticLinkDereference()
-        const dereferenced = new Set();
-        statistic.on((data) => {
-            dereferenced.add(data.url);
-            links++;
-        });
+type QueryMetrics = {
+    totalTimeTaken: number[];
+    firstTs: number[];
+    lastTs: number[];
+    nResults: number[];
+    linksDereferenced: number[];
+};
 
-        // let intermediateResults = 0;
-        // const statistic = new StatisticLinkDiscovery();
-        // const linksEmitted: Set<string> = new Set();
-        // const statisticIntermediateResults = new StatisticIntermediateResults();
-        // statistic.on((data) => {
-        //     if (!linksEmitted.has(data.edge[1])){
-        //         linksEmitted.add(data.edge[1]);
-        //         links++;
-        //     }
-        // });
-        // statisticIntermediateResults.on((data) => {
-        //     intermediateResults++
-        // });
-        // const timestamps = [];
-        // const start = performance.now();
-        const bs = await runner.executeQuery(query, {
-            "lenient": true, 
-            noCache: true,
-            // log: new LoggerPretty({ level: 'debug' }),
-            [statistic.key.name]: statistic,
-            // [statisticIntermediateResults.key.name]: statisticIntermediateResults
-        });
-        const result = await trackTimestamps(bs);
-        totalTimeTaken.push(result.endTime);
-        firstTs.push(result.timestamps[0]);
-        lastTs.push(result.timestamps[result.timestamps.length-1]);
-        nResults.push(result.nResults);
-        console.log(`${(totalTimeTaken[totalTimeTaken.length-1]).toFixed(4)} seconds, ${nResults[nResults.length-1]} results,
-         ${dereferenced.size} links`);  
-        console.log(dereferenced);
-        await sleep(500);
+async function runQueriesRepeat(queries: string[], queryNames: string[], repeats: number, newRunner: boolean) {
+    // Initialize the dictionary mapping query names to their metric arrays
+    const resultsByQuery: Record<string, QueryMetrics> = {};
+    for (const name of queryNames) {
+        resultsByQuery[name] = {
+            totalTimeTaken: [],
+            firstTs: [],
+            lastTs: [],
+            nResults: [],
+            linksDereferenced: []
+        };
     }
-    const {mean, std} = getStats(totalTimeTaken);
-    const {mean: meanFirst, std: stdFirst}  = getStats(firstTs);
-    const {mean: meanLast, std: stdLast} = getStats(lastTs);
-    const {mean: meanResult, std: stdResults} = getStats(nResults);
-    console.log(`Execution time: ${mean}(${std})`);
-    console.log(`First ts: ${meanFirst}(${stdFirst})`);
-    console.log(`Last ts: ${meanLast}(${stdLast})`);
-    console.log(`Results: ${meanResult}(${stdResults})`)
-    
+    let runner = new ComunicaRunner();
+
+    for (let i = 0; i < repeats; i++) {
+        for (let qIndex = 0; qIndex < queries.length; qIndex++) {
+            const query = queries[qIndex];
+            const queryName = queryNames[qIndex];
+            const metrics = resultsByQuery[queryName];
+
+            if (newRunner) {
+                runner = new ComunicaRunner();
+            }
+            console.log(`Query: ${queryName} - Repetition: ${i + 1}/${repeats}`);
+
+            let links = 0;
+            const statistic = new StatisticLinkDereference();
+            const dereferenced = new Set();
+            statistic.on((data) => {
+                dereferenced.add(data.url);
+                links++;
+            });
+
+            const bs = await runner.executeQuery(query, {
+                "lenient": true,
+                // noCache: true,
+                [statistic.key.name]: statistic,
+            });
+
+            const result = await trackTimestamps(bs);
+            
+            // Push results to the specific query's arrays
+            metrics.totalTimeTaken.push(result.endTime);
+            metrics.firstTs.push(result.timestamps[0] || 0); // Guard against queries with 0 results
+            metrics.lastTs.push(result.timestamps[result.timestamps.length - 1] || 0);
+            metrics.nResults.push(result.nResults);
+            metrics.linksDereferenced.push(dereferenced.size);
+
+            console.log(`${queryName}: ${(result.endTime).toFixed(4)} seconds, ${result.nResults} results, ${dereferenced.size} links`);
+            await sleep(500);
+        }
+    }
+
+    // Calculate and print stats for each query
+    console.log('\n--- FINAL RESULTS ---');
+    for (const [queryName, metrics] of Object.entries(resultsByQuery)) {
+        console.log(`\nResults for query: ${queryName}`);
+        
+        const { mean, std } = getStats(metrics.totalTimeTaken);
+        const { mean: meanFirst, std: stdFirst } = getStats(metrics.firstTs);
+        const { mean: meanLast, std: stdLast } = getStats(metrics.lastTs);
+        const { mean: meanResult, std: stdResults } = getStats(metrics.nResults);
+        const { mean: meanLinks, std: stdLinks } = getStats(metrics.linksDereferenced);
+
+        console.log(`Execution time: ${mean.toFixed(4)} (${std.toFixed(4)})`);
+        console.log(`First ts:       ${meanFirst.toFixed(4)} (${stdFirst.toFixed(4)})`);
+        console.log(`Last ts:        ${meanLast.toFixed(4)} (${stdLast.toFixed(4)})`);
+        console.log(`Results:        ${meanResult.toFixed(2)} (${stdResults.toFixed(2)})`);
+        console.log(`Links:          ${meanLinks.toFixed(2)} (${stdLinks.toFixed(2)})`);
+    }
 }
 
-function trackTimestamps(bs: NodeJS.ReadableStream, ): Promise<{ timestamps: number[], endTime: number, nResults: number }> {
+function trackTimestamps(bs: NodeJS.ReadableStream): Promise<{ timestamps: number[], endTime: number, nResults: number }> {
     return new Promise((resolve, reject) => {
         const start = performance.now();
         const timestamps: number[] = [];
@@ -74,7 +95,6 @@ function trackTimestamps(bs: NodeJS.ReadableStream, ): Promise<{ timestamps: num
         bs.on('data', () => {
             timestamps.push((performance.now() - start) / 1000);
             nResults += 1;
-            console.log("Found data")
         });
 
         bs.on('end', () => {
@@ -84,14 +104,14 @@ function trackTimestamps(bs: NodeJS.ReadableStream, ): Promise<{ timestamps: num
         bs.on('error', (err) => {
             console.log(err);
             const endTime = (performance.now() - start) / 1000;
-            reject({timestamps, endTime, nResults })
+            reject({ timestamps, endTime, nResults })
         })
     });
 }
 
-async function runSingleQueryStreaming(runner: ComunicaRunner, query: string, repeats: number){
-    for (let i = 0; i < repeats; i++){
-        console.log(`${i+1}/${repeats}`)
+async function runSingleQueryStreaming(runner: ComunicaRunner, query: string, repeats: number) {
+    for (let i = 0; i < repeats; i++) {
+        console.log(`${i + 1}/${repeats}`)
         let links = 0;
         const statistic = new StatisticLinkDiscovery()
         statistic.on((data) => {
@@ -99,57 +119,34 @@ async function runSingleQueryStreaming(runner: ComunicaRunner, query: string, re
         });
 
         const bs = await runner.executeQuery(query, {
-            "lenient": true, 
+            "lenient": true,
             [statistic.key.name]: statistic,
         });
         const start = performance.now();
         bs.on('data', () => {
-            console.log(`Result after: ${(performance.now() - start)/1000} seconds`);
+            console.log(`Result after: ${(performance.now() - start) / 1000} seconds`);
         });
         bs.on('end', () => {
-            console.log(`${links} links in ${(performance.now()-start)/1000} seconds`);
+            console.log(`${links} links in ${(performance.now() - start) / 1000} seconds`);
         });
     }
 }
 
 function getStats(arr: number[]): { mean: number; std: number } {
     if (arr.length === 0) return { mean: 0, std: 0 };
-  
+
     const mean = arr.reduce((sum, val) => sum + val, 0) / arr.length;
-  
+
     const variance =
-      arr.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / arr.length;
-  
+        arr.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / arr.length;
+
     const std = Math.sqrt(variance);
-  
+
     return { mean, std };
 }
 
 function sleep(ms: number) {
     return new Promise((resolve) => {
-      setTimeout(resolve, ms);
+        setTimeout(resolve, ms);
     });
-  }
-`
-Default:
-Execution time: 4.186129396125001(0.3234682246751786)
-First ts: 0.8993861942500014(0.1947914953027016)
-Last ts: 1.11254683425(0.22251503310573326)
-Results: 6(0)
-Fixed-min-index:
-Execution time: 2.6007704186249994(0.47325979027136944)
-First ts: 0.7889877312499991(0.43696611212360453)
-Last ts: 0.8390577231249994(0.45009665646657526)
-Results: 6(0)
-Lottery:
-Execution time: 2.5118684554999997(0.239776353242635)
-First ts: 0.6692206422500001(0.19015717899060885)
-Last ts: 0.7392682557499998(0.15377096900358228)
-Results: 6(0)
-Lottery signature-based:
-Execution time: 3.4850449025(2.4942489317108425)
-First ts: 0.7051670757500001(0.10495525440143293)
-Last ts: 0.7672689716250004(0.20778836106071646)
-Results: 6(0)
-
-`
+}

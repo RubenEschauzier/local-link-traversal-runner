@@ -4,9 +4,12 @@
   "main": "index.js",
   "license": "MIT",
   "dependencies": {
-    "@comunica/logger-pretty": "^4.2.0",
-    "@comunica/statistic-link-discovery": "^4.1.0",
-    "@comunica/statistic-link-dereference": "^4.1.0",
+    "@comunica/logger-pretty": "^5.0.5",
+    "@comunica/statistic-link-discovery": "^5.0.5",
+    "@comunica/statistic-link-dereference": "^5.0.5",
+    "@comunica/query-sparql-link-traversal-solid": "^0.8.0",
+    "@rubeneschauzier/statistic-traversal-topology": "^0.7.0",
+    "@comunica/types": "^5.0.5",
     "@rdfjs/types": "1.1.2",
     "typescript": "^5.5.3"
   },

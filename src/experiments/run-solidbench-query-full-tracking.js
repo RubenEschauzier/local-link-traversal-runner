@@ -4,7 +4,7 @@ const comunica_runner_1 = require("../packages/comunica-runner");
 const solidbench_queries_1 = require("../queries/solidbench-queries");
 const statistic_link_discovery_1 = require("@comunica/statistic-link-discovery");
 const statistic_link_dereference_1 = require("@comunica/statistic-link-dereference");
-const statistic_traversal_topology_1 = require("@comunica/statistic-traversal-topology");
+const statistic_traversal_topology_1 = require("@rubeneschauzier/statistic-traversal-topology");
 const fs = require("fs");
 const runner = new comunica_runner_1.ComunicaRunner();
 runSingleQuery(runner, solidbench_queries_1.queries.d_2_5, 3);
