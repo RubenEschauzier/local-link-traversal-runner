@@ -10,7 +10,8 @@ class ComunicaRunner {
         const bindingsStream = await this.engine.queryBindings(query, context);
         return bindingsStream;
     }
-    consumeStream(bindingsStream, cb) {
+    async explainQuery(query, context, explainType) {
+        return await this.engine.explain(query, context, explainType);
     }
     async timeIt(toTime, functionArguments) {
         const start = performance.now();

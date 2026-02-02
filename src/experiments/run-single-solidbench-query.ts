@@ -2,9 +2,13 @@ import { ComunicaRunner } from '../packages/comunica-runner';
 import { queries } from '../queries/solidbench-queries';
 import { StatisticLinkDiscovery } from '@comunica/statistic-link-discovery';
 import { StatisticLinkDereference } from '@comunica/statistic-link-dereference';
+import { LoggerPretty } from "@comunica/logger-pretty";
+
 
 const runnerOuter = new ComunicaRunner();
-runQueriesRepeat([queries.d_6_1], ["d_8_1"], 3, false);
+runQueriesRepeat([queries.d_6_1], ["d_6_1"], 5, false);
+// explainQueriesRepeat([queries.d_1_1], ["d_1_1"], 2, false, 'physical')
+
 
 type QueryMetrics = {
     totalTimeTaken: number[];
@@ -51,10 +55,10 @@ async function runQueriesRepeat(queries: string[], queryNames: string[], repeats
                 "lenient": true,
                 // noCache: true,
                 [statistic.key.name]: statistic,
+                // log: new LoggerPretty({level: 'debug'}) 
             });
 
             const result = await trackTimestamps(bs);
-            
             // Push results to the specific query's arrays
             metrics.totalTimeTaken.push(result.endTime);
             metrics.firstTs.push(result.timestamps[0] || 0); // Guard against queries with 0 results
@@ -83,6 +87,29 @@ async function runQueriesRepeat(queries: string[], queryNames: string[], repeats
         console.log(`Last ts:        ${meanLast.toFixed(4)} (${stdLast.toFixed(4)})`);
         console.log(`Results:        ${meanResult.toFixed(2)} (${stdResults.toFixed(2)})`);
         console.log(`Links:          ${meanLinks.toFixed(2)} (${stdLinks.toFixed(2)})`);
+    }
+}
+
+async function explainQueriesRepeat(
+    queries: string[],
+    queryNames: string[],
+    repeats: number,
+    newRunner: boolean,
+    explainType: string,
+){
+    let runner = new ComunicaRunner();
+
+    for (let i = 0; i < repeats; i++) {
+        for (let qIndex = 0; qIndex < queries.length; qIndex++) {
+            const query = queries[qIndex];
+            const queryName = queryNames[qIndex];
+
+            if (newRunner) {
+                runner = new ComunicaRunner();
+            }
+            console.log(`Query: ${queryName}, repetition: ${i}:`)
+            console.log(await runner.explainQuery(query, { "lenient": true }, explainType));
+        }
     }
 }
 

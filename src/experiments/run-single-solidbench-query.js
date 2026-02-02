@@ -5,7 +5,7 @@ const solidbench_queries_1 = require("../queries/solidbench-queries");
 const statistic_link_discovery_1 = require("@comunica/statistic-link-discovery");
 const statistic_link_dereference_1 = require("@comunica/statistic-link-dereference");
 const runnerOuter = new comunica_runner_1.ComunicaRunner();
-runQueriesRepeat([solidbench_queries_1.queries.d_6_1], ["d_8_1"], 3, false);
+runQueriesRepeat([solidbench_queries_1.queries.d_6_1], ["d_6_1"], 5, false);
 async function runQueriesRepeat(queries, queryNames, repeats, newRunner) {
     // Initialize the dictionary mapping query names to their metric arrays
     const resultsByQuery = {};
@@ -39,6 +39,7 @@ async function runQueriesRepeat(queries, queryNames, repeats, newRunner) {
                 "lenient": true,
                 // noCache: true,
                 [statistic.key.name]: statistic,
+                // log: new LoggerPretty({level: 'debug'}) 
             });
             const result = await trackTimestamps(bs);
             // Push results to the specific query's arrays
@@ -65,6 +66,20 @@ async function runQueriesRepeat(queries, queryNames, repeats, newRunner) {
         console.log(`Last ts:        ${meanLast.toFixed(4)} (${stdLast.toFixed(4)})`);
         console.log(`Results:        ${meanResult.toFixed(2)} (${stdResults.toFixed(2)})`);
         console.log(`Links:          ${meanLinks.toFixed(2)} (${stdLinks.toFixed(2)})`);
+    }
+}
+async function explainQueriesRepeat(queries, queryNames, repeats, newRunner, explainType) {
+    let runner = new comunica_runner_1.ComunicaRunner();
+    for (let i = 0; i < repeats; i++) {
+        for (let qIndex = 0; qIndex < queries.length; qIndex++) {
+            const query = queries[qIndex];
+            const queryName = queryNames[qIndex];
+            if (newRunner) {
+                runner = new comunica_runner_1.ComunicaRunner();
+            }
+            console.log(`Query: ${queryName}, repetition: ${i}:`);
+            console.log(await runner.explainQuery(query, { "lenient": true }, explainType));
+        }
     }
 }
 function trackTimestamps(bs) {
