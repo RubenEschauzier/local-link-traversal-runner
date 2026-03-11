@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const promises_1 = require("node:inspector/promises");
+const node_fs_1 = require("node:fs");
 const promises_2 = require("node:fs/promises");
 const node_perf_hooks_1 = require("node:perf_hooks");
 const comunica_runner_1 = require("../packages/comunica-runner");
@@ -8,7 +9,7 @@ const solidbench_queries_1 = require("../queries/solidbench-queries");
 const statistic_link_discovery_1 = require("@comunica/statistic-link-discovery");
 const statistic_link_dereference_1 = require("@comunica/statistic-link-dereference");
 const path = require("node:path");
-runQueriesRepeat([solidbench_queries_1.queries.d_6_1], ["d_6_1"], 5, false, true);
+runQueriesRepeat([solidbench_queries_1.queries.d_6_1], ["d_6_1"], 5, false, false);
 async function runQueriesRepeat(queries, queryNames, repeats, newRunner, enableProfiling = false, profilingOutputDir) {
     const resultsByQuery = {};
     for (const name of queryNames) {
@@ -17,6 +18,9 @@ async function runQueriesRepeat(queries, queryNames, repeats, newRunner, enableP
             nResults: [], linksDereferenced: [],
             eluActive: [], eluUtilization: []
         };
+    }
+    if (enableProfiling && profilingOutputDir) {
+        await (0, promises_2.mkdir)(profilingOutputDir, { recursive: true });
     }
     let runner = new comunica_runner_1.ComunicaRunner();
     for (let i = 0; i < repeats; i++) {
@@ -36,29 +40,41 @@ async function runQueriesRepeat(queries, queryNames, repeats, newRunner, enableP
                 links++;
             });
             let session;
-            let traceEvents = [];
             let tracingComplete;
             let eluStart;
+            let traceFile = `trace_${queryName}_rep_${i + 1}.json`;
+            if (profilingOutputDir) {
+                traceFile = path.join(profilingOutputDir, traceFile);
+            }
             if (enableProfiling) {
                 session = new promises_1.Session();
                 session.connect();
-                // Collect trace chunks as they are emitted
+                const traceStream = (0, node_fs_1.createWriteStream)(traceFile);
+                traceStream.write('[');
+                let firstEntry = true;
                 session.on('NodeTracing.dataCollected', (event) => {
-                    traceEvents.push(...event.params.value);
+                    for (const traceEvent of event.params.value) {
+                        if (!firstEntry) {
+                            traceStream.write(',');
+                        }
+                        traceStream.write(JSON.stringify(traceEvent));
+                        firstEntry = false;
+                    }
                 });
-                // Set up a promise to wait for the final flush
                 tracingComplete = new Promise((resolve) => {
-                    session.once('NodeTracing.tracingComplete', resolve);
+                    session.once('NodeTracing.tracingComplete', () => {
+                        traceStream.write(']');
+                        traceStream.end();
+                        resolve(undefined);
+                    });
                 });
-                // Start tracing, asking for Node core, async hooks (I/O), and V8 CPU data
                 await session.post('NodeTracing.start', {
                     traceConfig: {
                         includedCategories: [
                             'node',
                             'node.async_hooks',
                             'v8',
-                            'disabled-by-default-v8.cpu_profiler',
-                            'disabled-by-default-v8.cpu_profiler.hires'
+                            // 'disabled-by-default-v8.cpu_profiler',
                         ]
                     }
                 });
@@ -71,17 +87,9 @@ async function runQueriesRepeat(queries, queryNames, repeats, newRunner, enableP
             const result = await trackTimestamps(bs);
             if (enableProfiling && session && eluStart && tracingComplete) {
                 const eluEnd = node_perf_hooks_1.performance.eventLoopUtilization(eluStart);
-                // Tell inspector to stop and wait for the final data chunks to arrive
                 await session.post('NodeTracing.stop');
                 await tracingComplete;
                 session.disconnect();
-                // Save as a standard JSON trace file
-                let traceFile = `trace_${queryName}_rep_${i + 1}.json`;
-                if (profilingOutputDir) {
-                    traceFile = path.join(profilingOutputDir, traceFile);
-                }
-                // Note: Trace files for heavy streaming apps can be large. 
-                await (0, promises_2.writeFile)(traceFile, JSON.stringify(traceEvents));
                 metrics.eluActive.push(eluEnd.active);
                 metrics.eluUtilization.push(eluEnd.utilization);
                 console.log(`Event Loop: ${(eluEnd.utilization * 100).toFixed(2)}% utilization`);
@@ -109,7 +117,6 @@ async function runQueriesRepeat(queries, queryNames, repeats, newRunner, enableP
         console.log(`Last ts:        ${meanLast.toFixed(4)} (${stdLast.toFixed(4)})`);
         console.log(`Results:        ${meanResult.toFixed(2)} (${stdResults.toFixed(2)})`);
         console.log(`Links:          ${meanLinks.toFixed(2)} (${stdLinks.toFixed(2)})`);
-        // Log ELU stats only if profiling ran
         if (enableProfiling && metrics.eluUtilization.length > 0) {
             const { mean: meanEluUtil } = getStats(metrics.eluUtilization);
             console.log(`Mean ELU:       ${(meanEluUtil * 100).toFixed(2)}%`);
