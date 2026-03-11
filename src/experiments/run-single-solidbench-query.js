@@ -1,21 +1,21 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+const promises_1 = require("node:inspector/promises");
+const promises_2 = require("node:fs/promises");
+const node_perf_hooks_1 = require("node:perf_hooks");
 const comunica_runner_1 = require("../packages/comunica-runner");
 const solidbench_queries_1 = require("../queries/solidbench-queries");
 const statistic_link_discovery_1 = require("@comunica/statistic-link-discovery");
 const statistic_link_dereference_1 = require("@comunica/statistic-link-dereference");
-const runnerOuter = new comunica_runner_1.ComunicaRunner();
-runQueriesRepeat([solidbench_queries_1.queries.d_6_1], ["d_6_1"], 5, false);
-async function runQueriesRepeat(queries, queryNames, repeats, newRunner) {
-    // Initialize the dictionary mapping query names to their metric arrays
+const path = require("node:path");
+runQueriesRepeat([solidbench_queries_1.queries.d_6_1], ["d_6_1"], 5, false, true);
+async function runQueriesRepeat(queries, queryNames, repeats, newRunner, enableProfiling = false, profilingOutputDir) {
     const resultsByQuery = {};
     for (const name of queryNames) {
         resultsByQuery[name] = {
-            totalTimeTaken: [],
-            firstTs: [],
-            lastTs: [],
-            nResults: [],
-            linksDereferenced: []
+            totalTimeTaken: [], firstTs: [], lastTs: [],
+            nResults: [], linksDereferenced: [],
+            eluActive: [], eluUtilization: []
         };
     }
     let runner = new comunica_runner_1.ComunicaRunner();
@@ -27,7 +27,7 @@ async function runQueriesRepeat(queries, queryNames, repeats, newRunner) {
             if (newRunner) {
                 runner = new comunica_runner_1.ComunicaRunner();
             }
-            console.log(`Query: ${queryName} - Repetition: ${i + 1}/${repeats}`);
+            console.log(`\nQuery: ${queryName} - Repetition: ${i + 1}/${repeats}`);
             let links = 0;
             const statistic = new statistic_link_dereference_1.StatisticLinkDereference();
             const dereferenced = new Set();
@@ -35,24 +35,67 @@ async function runQueriesRepeat(queries, queryNames, repeats, newRunner) {
                 dereferenced.add(data.url);
                 links++;
             });
+            let session;
+            let traceEvents = [];
+            let tracingComplete;
+            let eluStart;
+            if (enableProfiling) {
+                session = new promises_1.Session();
+                session.connect();
+                // Collect trace chunks as they are emitted
+                session.on('NodeTracing.dataCollected', (event) => {
+                    traceEvents.push(...event.params.value);
+                });
+                // Set up a promise to wait for the final flush
+                tracingComplete = new Promise((resolve) => {
+                    session.once('NodeTracing.tracingComplete', resolve);
+                });
+                // Start tracing, asking for Node core, async hooks (I/O), and V8 CPU data
+                await session.post('NodeTracing.start', {
+                    traceConfig: {
+                        includedCategories: [
+                            'node',
+                            'node.async_hooks',
+                            'v8',
+                            'disabled-by-default-v8.cpu_profiler',
+                            'disabled-by-default-v8.cpu_profiler.hires'
+                        ]
+                    }
+                });
+                eluStart = node_perf_hooks_1.performance.eventLoopUtilization();
+            }
             const bs = await runner.executeQuery(query, {
                 "lenient": true,
-                // noCache: true,
                 [statistic.key.name]: statistic,
-                // log: new LoggerPretty({level: 'debug'}) 
             });
             const result = await trackTimestamps(bs);
-            // Push results to the specific query's arrays
+            if (enableProfiling && session && eluStart && tracingComplete) {
+                const eluEnd = node_perf_hooks_1.performance.eventLoopUtilization(eluStart);
+                // Tell inspector to stop and wait for the final data chunks to arrive
+                await session.post('NodeTracing.stop');
+                await tracingComplete;
+                session.disconnect();
+                // Save as a standard JSON trace file
+                let traceFile = `trace_${queryName}_rep_${i + 1}.json`;
+                if (profilingOutputDir) {
+                    traceFile = path.join(profilingOutputDir, traceFile);
+                }
+                // Note: Trace files for heavy streaming apps can be large. 
+                await (0, promises_2.writeFile)(traceFile, JSON.stringify(traceEvents));
+                metrics.eluActive.push(eluEnd.active);
+                metrics.eluUtilization.push(eluEnd.utilization);
+                console.log(`Event Loop: ${(eluEnd.utilization * 100).toFixed(2)}% utilization`);
+                console.log(`Trace saved: ${traceFile}`);
+            }
             metrics.totalTimeTaken.push(result.endTime);
-            metrics.firstTs.push(result.timestamps[0] || 0); // Guard against queries with 0 results
+            metrics.firstTs.push(result.timestamps[0] || 0);
             metrics.lastTs.push(result.timestamps[result.timestamps.length - 1] || 0);
             metrics.nResults.push(result.nResults);
             metrics.linksDereferenced.push(dereferenced.size);
-            console.log(`${queryName}: ${(result.endTime).toFixed(4)} seconds, ${result.nResults} results, ${dereferenced.size} links`);
+            console.log(`${queryName}: ${result.endTime.toFixed(4)}s, ${result.nResults} results, ${dereferenced.size} links`);
             await sleep(500);
         }
     }
-    // Calculate and print stats for each query
     console.log('\n--- FINAL RESULTS ---');
     for (const [queryName, metrics] of Object.entries(resultsByQuery)) {
         console.log(`\nResults for query: ${queryName}`);
@@ -66,6 +109,11 @@ async function runQueriesRepeat(queries, queryNames, repeats, newRunner) {
         console.log(`Last ts:        ${meanLast.toFixed(4)} (${stdLast.toFixed(4)})`);
         console.log(`Results:        ${meanResult.toFixed(2)} (${stdResults.toFixed(2)})`);
         console.log(`Links:          ${meanLinks.toFixed(2)} (${stdLinks.toFixed(2)})`);
+        // Log ELU stats only if profiling ran
+        if (enableProfiling && metrics.eluUtilization.length > 0) {
+            const { mean: meanEluUtil } = getStats(metrics.eluUtilization);
+            console.log(`Mean ELU:       ${(meanEluUtil * 100).toFixed(2)}%`);
+        }
     }
 }
 async function explainQueriesRepeat(queries, queryNames, repeats, newRunner, explainType) {
@@ -84,20 +132,20 @@ async function explainQueriesRepeat(queries, queryNames, repeats, newRunner, exp
 }
 function trackTimestamps(bs) {
     return new Promise((resolve, reject) => {
-        const start = performance.now();
+        const start = node_perf_hooks_1.performance.now();
         const timestamps = [];
         let nResults = 0;
         bs.on('data', () => {
-            timestamps.push((performance.now() - start) / 1000);
+            timestamps.push((node_perf_hooks_1.performance.now() - start) / 1000);
             nResults += 1;
         });
         bs.on('end', () => {
-            const endTime = (performance.now() - start) / 1000;
+            const endTime = (node_perf_hooks_1.performance.now() - start) / 1000;
             resolve({ timestamps, endTime, nResults });
         });
         bs.on('error', (err) => {
             console.log(err);
-            const endTime = (performance.now() - start) / 1000;
+            const endTime = (node_perf_hooks_1.performance.now() - start) / 1000;
             reject({ timestamps, endTime, nResults });
         });
     });
@@ -114,12 +162,12 @@ async function runSingleQueryStreaming(runner, query, repeats) {
             "lenient": true,
             [statistic.key.name]: statistic,
         });
-        const start = performance.now();
+        const start = node_perf_hooks_1.performance.now();
         bs.on('data', () => {
-            console.log(`Result after: ${(performance.now() - start) / 1000} seconds`);
+            console.log(`Result after: ${(node_perf_hooks_1.performance.now() - start) / 1000} seconds`);
         });
         bs.on('end', () => {
-            console.log(`${links} links in ${(performance.now() - start) / 1000} seconds`);
+            console.log(`${links} links in ${(node_perf_hooks_1.performance.now() - start) / 1000} seconds`);
         });
     }
 }

@@ -1,13 +1,16 @@
+import { Session } from 'node:inspector/promises';
+import { writeFile } from 'node:fs/promises';
+import { performance } from 'node:perf_hooks';
 import { ComunicaRunner } from '../packages/comunica-runner';
 import { queries } from '../queries/solidbench-queries';
 import { StatisticLinkDiscovery } from '@comunica/statistic-link-discovery';
 import { StatisticLinkDereference } from '@comunica/statistic-link-dereference';
 import { LoggerPretty } from "@comunica/logger-pretty";
+import * as path from 'node:path';
 
 
-const runnerOuter = new ComunicaRunner();
-runQueriesRepeat([queries.d_6_1], ["d_6_1"], 5, false);
-// explainQueriesRepeat([queries.d_1_1], ["d_1_1"], 2, false, 'physical')
+runQueriesRepeat([queries.d_6_1], ["d_6_1"], 5, false, true, );
+// explainQueriesRepeat([queries.d_6_1], ["d_6_1"], 5, false, 'physical')
 
 
 type QueryMetrics = {
@@ -16,20 +19,27 @@ type QueryMetrics = {
     lastTs: number[];
     nResults: number[];
     linksDereferenced: number[];
+    eluActive: number[];
+    eluUtilization: number[];
 };
 
-async function runQueriesRepeat(queries: string[], queryNames: string[], repeats: number, newRunner: boolean) {
-    // Initialize the dictionary mapping query names to their metric arrays
+async function runQueriesRepeat(
+    queries: string[], 
+    queryNames: string[], 
+    repeats: number, 
+    newRunner: boolean,
+    enableProfiling: boolean = false,
+    profilingOutputDir?: string
+) {
     const resultsByQuery: Record<string, QueryMetrics> = {};
     for (const name of queryNames) {
         resultsByQuery[name] = {
-            totalTimeTaken: [],
-            firstTs: [],
-            lastTs: [],
-            nResults: [],
-            linksDereferenced: []
+            totalTimeTaken: [], firstTs: [], lastTs: [],
+            nResults: [], linksDereferenced: [],
+            eluActive: [], eluUtilization: []
         };
     }
+    
     let runner = new ComunicaRunner();
 
     for (let i = 0; i < repeats; i++) {
@@ -41,37 +51,92 @@ async function runQueriesRepeat(queries: string[], queryNames: string[], repeats
             if (newRunner) {
                 runner = new ComunicaRunner();
             }
-            console.log(`Query: ${queryName} - Repetition: ${i + 1}/${repeats}`);
+            console.log(`\nQuery: ${queryName} - Repetition: ${i + 1}/${repeats}`);
 
             let links = 0;
             const statistic = new StatisticLinkDereference();
             const dereferenced = new Set();
-            statistic.on((data) => {
+            statistic.on((data: any) => {
                 dereferenced.add(data.url);
                 links++;
             });
 
+            let session: Session | undefined;
+            let traceEvents: any[] = [];
+            let tracingComplete: Promise<unknown> | undefined;
+            let eluStart: ReturnType<typeof performance.eventLoopUtilization> | undefined;
+
+            if (enableProfiling) {
+                session = new Session();
+                session.connect();
+                
+                // Collect trace chunks as they are emitted
+                session.on('NodeTracing.dataCollected', (event: any) => {
+                    traceEvents.push(...event.params.value);
+                });
+
+                // Set up a promise to wait for the final flush
+                tracingComplete = new Promise((resolve) => {
+                    session!.once('NodeTracing.tracingComplete', resolve);
+                });
+
+                // Start tracing, asking for Node core, async hooks (I/O), and V8 CPU data
+                await session.post('NodeTracing.start', {
+                    traceConfig: { 
+                        includedCategories: [
+                            'node',
+                            'node.async_hooks',
+                            'v8',   
+                            'disabled-by-default-v8.cpu_profiler',
+                            'disabled-by-default-v8.cpu_profiler.hires'
+                        ]                    
+                    }
+                });
+                eluStart = performance.eventLoopUtilization();
+            }
+
             const bs = await runner.executeQuery(query, {
                 "lenient": true,
-                // noCache: true,
                 [statistic.key.name]: statistic,
-                // log: new LoggerPretty({level: 'debug'}) 
             });
 
             const result = await trackTimestamps(bs);
-            // Push results to the specific query's arrays
+
+            if (enableProfiling && session && eluStart && tracingComplete) {
+                const eluEnd = performance.eventLoopUtilization(eluStart);
+                
+                // Tell inspector to stop and wait for the final data chunks to arrive
+                await session.post('NodeTracing.stop');
+                await tracingComplete;
+                session.disconnect();
+
+                // Save as a standard JSON trace file
+                let traceFile = `trace_${queryName}_rep_${i + 1}.json`;
+                if (profilingOutputDir){
+                    traceFile = path.join(profilingOutputDir, traceFile)
+                }
+                // Note: Trace files for heavy streaming apps can be large. 
+                await writeFile(traceFile, JSON.stringify(traceEvents));
+
+                metrics.eluActive.push(eluEnd.active);
+                metrics.eluUtilization.push(eluEnd.utilization);
+
+                console.log(`Event Loop: ${(eluEnd.utilization * 100).toFixed(2)}% utilization`);
+                console.log(`Trace saved: ${traceFile}`);
+            }
+
             metrics.totalTimeTaken.push(result.endTime);
-            metrics.firstTs.push(result.timestamps[0] || 0); // Guard against queries with 0 results
+            metrics.firstTs.push(result.timestamps[0] || 0);
             metrics.lastTs.push(result.timestamps[result.timestamps.length - 1] || 0);
             metrics.nResults.push(result.nResults);
             metrics.linksDereferenced.push(dereferenced.size);
 
-            console.log(`${queryName}: ${(result.endTime).toFixed(4)} seconds, ${result.nResults} results, ${dereferenced.size} links`);
+            console.log(`${queryName}: ${result.endTime.toFixed(4)}s, ${result.nResults} results, ${dereferenced.size} links`);
+            
             await sleep(500);
         }
     }
 
-    // Calculate and print stats for each query
     console.log('\n--- FINAL RESULTS ---');
     for (const [queryName, metrics] of Object.entries(resultsByQuery)) {
         console.log(`\nResults for query: ${queryName}`);
@@ -87,6 +152,12 @@ async function runQueriesRepeat(queries: string[], queryNames: string[], repeats
         console.log(`Last ts:        ${meanLast.toFixed(4)} (${stdLast.toFixed(4)})`);
         console.log(`Results:        ${meanResult.toFixed(2)} (${stdResults.toFixed(2)})`);
         console.log(`Links:          ${meanLinks.toFixed(2)} (${stdLinks.toFixed(2)})`);
+
+        // Log ELU stats only if profiling ran
+        if (enableProfiling && metrics.eluUtilization.length > 0) {
+            const { mean: meanEluUtil } = getStats(metrics.eluUtilization);
+            console.log(`Mean ELU:       ${(meanEluUtil * 100).toFixed(2)}%`);
+        }
     }
 }
 
