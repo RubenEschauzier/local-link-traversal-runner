@@ -103,5 +103,75 @@ SELECT ?messageId ?messageCreationDate ?messageContent WHERE {
     snvoc:creationDate ?messageCreationDate;
     snvoc:id ?messageId.
 }
+`,
+hinted_slow_d_1_1: 
 `
-};
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX snvoc: <https://solidbench.linkeddatafragments.org/www.ldbc.eu/ldbc_socialnet/1.0/vocabulary/>
+SELECT ?messageId ?messageCreationDate ?messageContent WHERE {
+  comunica:hint comunica:optimizer "None" .
+  
+  ?message snvoc:hasCreator <https://solidbench.linkeddatafragments.org/pods/00000000000000000933/profile/card#me> .
+  {
+    ?message snvoc:content ?messageContent .
+    {
+      ?message rdf:type snvoc:Post .
+      {
+        ?message snvoc:id ?messageId .
+        ?message snvoc:creationDate ?messageCreationDate .
+      }
+    }
+  }
+}`,
+hinted_fast_d_1_1: `
+
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX snvoc: <https://solidbench.linkeddatafragments.org/www.ldbc.eu/ldbc_socialnet/1.0/vocabulary/>
+SELECT ?messageId ?messageCreationDate ?messageContent WHERE {
+  comunica:hint comunica:optimizer "None" .
+  ?message rdf:type snvoc:Post .
+  {
+    ?message snvoc:content ?messageContent .
+    {
+      ?message snvoc:creationDate ?messageCreationDate .
+      {
+        ?message snvoc:hasCreator <https://solidbench.linkeddatafragments.org/pods/00000000000000000933/profile/card#me> .
+        ?message snvoc:id ?messageId .
+      }
+    }
+  }
+}
+`,
+hinted_slow_d_6_1: `
+PREFIX snvoc: <https://solidbench.linkeddatafragments.org/www.ldbc.eu/ldbc_socialnet/1.0/vocabulary/>
+SELECT DISTINCT ?forumId ?forumTitle WHERE {
+  comunica:hint comunica:optimizer "None" .
+  {
+    ?forum snvoc:containerOf ?message.
+    {
+      ?forum snvoc:title ?forumTitle.
+      {
+        ?message snvoc:hasCreator <https://solidbench.linkeddatafragments.org/pods/00000000000000000933/profile/card#me>.
+        ?forum snvoc:id ?forumId.
+      }
+    }
+  }
+}
+`,
+hinted_fast_d_6_1: `
+PREFIX snvoc: <https://solidbench.linkeddatafragments.org/www.ldbc.eu/ldbc_socialnet/1.0/vocabulary/>
+SELECT DISTINCT ?forumId ?forumTitle WHERE {
+  comunica:hint comunica:optimizer "None" .
+  {
+    ?forum snvoc:id ?forumId.
+    {
+      ?forum snvoc:title ?forumTitle.
+      {
+        ?message snvoc:hasCreator <https://solidbench.linkeddatafragments.org/pods/00000000000000000933/profile/card#me>.
+        ?forum snvoc:containerOf ?message.
+      }
+    }
+  }
+}
+`
+}
