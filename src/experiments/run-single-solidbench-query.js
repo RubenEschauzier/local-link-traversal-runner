@@ -5,7 +5,13 @@ const comunica_runner_1 = require("../packages/comunica-runner");
 const solidbench_queries_1 = require("../queries/solidbench-queries");
 const statistic_link_discovery_1 = require("@comunica/statistic-link-discovery");
 const statistic_link_dereference_1 = require("@comunica/statistic-link-dereference");
-runQueriesRepeat([solidbench_queries_1.queries.d_6_1], ["d_6_1"], 5, false);
+runRepeatRepeatExperiments(solidbench_queries_1.queries.d_7_1, "d_7_1", 2, 1, false);
+async function runRepeatRepeatExperiments(query, queryName, repeats, repeatsOfRepeats, newRunner) {
+    for (let i = 0; i < repeatsOfRepeats; i++) {
+        const resultsByQuery = await runQueriesRepeat([query], [queryName], repeats, newRunner);
+        console.log(resultsByQuery);
+    }
+}
 async function runQueriesRepeat(queries, queryNames, repeats, newRunner) {
     const resultsByQuery = {};
     for (const name of queryNames) {
@@ -60,6 +66,7 @@ async function runQueriesRepeat(queries, queryNames, repeats, newRunner) {
         console.log(`Results:        ${meanResult.toFixed(2)} (${stdResults.toFixed(2)})`);
         console.log(`Links:          ${meanLinks.toFixed(2)} (${stdLinks.toFixed(2)})`);
     }
+    return resultsByQuery;
 }
 async function explainQueriesRepeat(queries, queryNames, repeats, newRunner, explainType) {
     let runner = new comunica_runner_1.ComunicaRunner();

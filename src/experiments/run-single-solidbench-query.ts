@@ -5,8 +5,8 @@ import { StatisticLinkDiscovery } from '@comunica/statistic-link-discovery';
 import { StatisticLinkDereference } from '@comunica/statistic-link-dereference';
 import { LoggerPretty } from "@comunica/logger-pretty";
 
-
-runQueriesRepeat([queries.d_6_1], ["d_6_1"], 5, false);
+runRepeatRepeatExperiments(queries.d_7_1, "d_7_1", 2, 1, false);
+// runQueriesRepeat([queries.hinted_fast_d_6_1], ["d_6_1"], 5, false);
 // explainQueriesRepeat([queries.hinted_fast_d_1_1], ["d_1_1_fast"], 2, false, 'physical')
 
 
@@ -20,6 +20,21 @@ type QueryMetrics = {
     eluUtilization: number[];
 };
 
+
+async function runRepeatRepeatExperiments( 
+    query: string, 
+    queryName: string, 
+    repeats: number,
+    repeatsOfRepeats: number,
+    newRunner: boolean,
+){
+    for (let i = 0; i < repeatsOfRepeats; i++){
+        const resultsByQuery = await runQueriesRepeat(
+            [query], [queryName], repeats, newRunner
+        );
+        console.log(resultsByQuery)
+    }
+}
 async function runQueriesRepeat(
     queries: string[], 
     queryNames: string[], 
@@ -91,6 +106,7 @@ async function runQueriesRepeat(
         console.log(`Results:        ${meanResult.toFixed(2)} (${stdResults.toFixed(2)})`);
         console.log(`Links:          ${meanLinks.toFixed(2)} (${stdLinks.toFixed(2)})`);
     }
+    return resultsByQuery
 }
 
 async function explainQueriesRepeat(

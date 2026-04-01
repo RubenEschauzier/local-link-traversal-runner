@@ -44,6 +44,16 @@ SELECT DISTINCT ?forumId ?forumTitle WHERE {
     snvoc:title ?forumTitle.
 }
 `,
+d_7_1: `
+PREFIX snvoc: <https://solidbench.linkeddatafragments.org/www.ldbc.eu/ldbc_socialnet/1.0/vocabulary/>
+SELECT DISTINCT ?firstName ?lastName WHERE {
+  ?message snvoc:hasCreator <https://solidbench.linkeddatafragments.org/pods/00000000000000000933/profile/card#me>.
+  ?forum snvoc:containerOf ?message;
+    snvoc:hasModerator ?moderator.
+  ?moderator snvoc:firstName ?firstName;
+    snvoc:lastName ?lastName.
+}
+`,
 d_8_1: `
 PREFIX snvoc: <https://solidbench.linkeddatafragments.org/www.ldbc.eu/ldbc_socialnet/1.0/vocabulary/>
 SELECT DISTINCT ?creator ?messageContent WHERE {
